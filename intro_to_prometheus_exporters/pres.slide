@@ -1,0 +1,237 @@
+# How to Monitor Anything...
+...with Prometheus Exporters
+
+Dave Henderson
+Grafana Labs
+https://github.com/hairyhenderson
+https://grafana.com/cloud
+
+: In this talk, we'll learn all about Prometheus Exporters are, and how to write your own for monitoring anything you can think of!
+
+## Agenda
+
+1. Prometheus
+2. Prometheus Exporters
+3. Prometheus Exporter Discovery
+4. Writing an exporter from scratch
+5. Visualizing with Prometheus and Grafana
+
+## Prometheus
+
+![prom logo](prometheus-logo.svg)
+
+- Inspired by Google's internal monitoring system, Borgmon
+- Open-source in 2012 by ex-Googlers at SoundCloud
+- Pull-based system that scrapes metrics from your services
+- Is a time-series database with efficient storage
+- Has a powerful query language called PromQL
+
+[https://prometheus.io](https://prometheus.io)
+
+: Prometheus is an open-source monitoring system that is designed to be easy to deploy, operate, and scale. It is a pull-based system, meaning that it periodically scrapes metrics from your services and stores them in a time-series database.
+
+: Metrics are exposed by your applications in a simple text-based format that Prometheus can understand.
+
+: It also has a powerful query language called PromQL that allows you to query and aggregate these metrics to create dashboards and alerts.
+
+## Prometheus Exporters
+
+- Purpose-built HTTP server application to expose metrics in the Prometheus format
+- Query metrics from the target you want to monitor
+- Expose those metrics in the Prometheus format
+- Written in any language
+
+[![](https://mermaid.ink/img/pako:eNpFT8EKwjAM_ZWS8_YDPQgDvTkQvWk9hDVzhXWtWQuOsX83c4o5vSTvveTN0ARLoOHBGDt1PJtBSR1eMXAiVmWpnpnY0Shwp6pbPakqxvtGO3HwlDrK61aNjXh8iT8DKMATe3RWbsyryoAIPBnQAi21mPtkwAyLUDGncJmGBnTiTAXkaDHR3qF850G32I8yjThcQ_j3ZF0KXG85PnGWN0oaRyk?type=png)](https://mermaid.live/edit#pako:eNpFT8EKwjAM_ZWS8_YDPQgDvTkQvWk9hDVzhXWtWQuOsX83c4o5vSTvveTN0ARLoOHBGDt1PJtBSR1eMXAiVmWpnpnY0Shwp6pbPakqxvtGO3HwlDrK61aNjXh8iT8DKMATe3RWbsyryoAIPBnQAi21mPtkwAyLUDGncJmGBnTiTAXkaDHR3qF850G32I8yjThcQ_j3ZF0KXG85PnGWN0oaRyk)
+
+: Sometimes, applications will expose metrics in the Prometheus format, which is great! But what if they don't? That's where Prometheus Exporters come in.
+
+: Prometheus Exporters are purpose-built applications that query metrics in some way from the application you want to monitor, and then expose those metrics in the Prometheus format, so that Prometheus can scrape them.
+
+## Prometheus Exporter Discovery
+
+: The community has built a large number of exporters for popular applications and services.
+
+: Exporters exist for general purpose systems, like the Node Exporter, which exports metrics about the host system, or the SNMP Exporter, which exports metrics from SNMP devices.
+
+: More specific exporters exist like the MySQL Exporter, the HAProxy Exporter, and the DigitalOcean Exporter, as well as an exporter I wrote for my standing desk
+
+: The Prometheus website has a list of official and community-supported exporters
+: There is also an alternate list available with more exporters on the port allocations wiki
+
+- Official Prometheus Exporters list: [https://prometheus.io/docs/instrumenting/exporters/](https://prometheus.io/docs/instrumenting/exporters/)
+- Port allocation wiki page: [https://github.com/prometheus/prometheus/wiki/Default-port-allocations](https://github.com/prometheus/prometheus/wiki/Default-port-allocations)
+
+<img src="./prom_official_exporters.png" style="width:45%"/>
+<img src="./prom_wiki_exporters.png" style="width:45%"/>
+
+
+: What if you want to monitor something that doesn't have an exporter already? Let's look at writing a simple exporter in Go.
+
+## Let's write an exporter!
+
+: For this example, we'll write an exporter that tracks the number of people in space right now.
+
+<!--
+just in case I need to regenerate:
+
+https://mermaid.live/edit#pako:eNpdkM1qwzAQhF9F7LWxfdchUGgoLbQNJKeiy2KtEwVLq0oriAl598o1wVCdpNE3-zM36NkSaMj0Uyj09OLwlNCboOrZJ_YkZyq52W6fdtfISShp9bo7qi5H7GnhHj8z9bx_W4CzSNRdh9G1HCk0gcUNU8vp1GGWxLm9ZA5LgWpqqrlZW7wfvj5VxGlktP-azOA6mVYDJ48iZFWVkuuzCbABT1V1tq52m_0GKu3JgK5XSwOWUQyYcK8oFuHDFHrQkgptoESL8kgC9IBjrmrE8M28vsk64fSxxPeX4v0Xkb9xVw
+-->
+
+![sequence diagram](./space-overview.png)
+
+1. Prometheus calls the `/space` endpoint
+2. The Exporter calls the people-in-space API
+3. The exporter formats and returns metrics
+
+: Ok, let's look at the data we're working with.
+
+## The Data
+
+- From this:
+
+```json
+{
+    "message": "success",
+    "people": [ {"name":"Jasmin Moghbeli","craft":"ISS"},{"name":"Andreas Mogensen","craft":"ISS"},{"name":"Satoshi Furukawa","craft":"ISS"},{"name":"Konstantin Borisov","craft":"ISS"},{"name":"Oleg Kononenko","craft":"ISS"},{"name":"Nikolai Chub","craft":"ISS"},{"name":"Loral O'Hara","craft":"ISS"} ],
+    "number": 7
+}
+```
+
+- To this:
+
+```
+people_in_space 7
+```
+
+: The Prometheus format is a simple text-based format that consists of one or
+: more lines of text, each representing a time series and its current value.
+
+: To start, we'll create a simple metric that represents the number of people in space right now.
+: At its simplest, we need a metric name and a value.
+
+## Metric Types
+
+- **Counter:** A monotonically increasing value
+- **Gauge:** A value that can go up or down
+- **Histogram:** A set of observations
+- **Summary:** A set of observations with quantiles
+
+: There are four types of metrics in Prometheus: counters, gauges, histograms, and summaries.
+: Counters are useful for tracking things like the number of requests that have been handled, the number of CPU seconds consumed, or the number of errors that have occurred.
+: Gauges are useful for tracking things like the current number of active connections, the current memory usage, or the current temperature.
+: Histograms are like counters, but they also track the distribution of values over time, which can be useful for efficiently tracking things like request latency or response size.
+: Summaries are like histograms, but they also track quantiles like the 50th, 90th, and 99th percentiles, which can be useful for understanding the distribution of values over time.
+
+: We'll use a gauge for the number of people in space, since it can go up or down.
+
+## Creating a collector
+
+: Prometheus exporters written in Go use the `prometheus/client_golang` module, which has the concept of a `Collector`.
+: A `Collector` is an interface that defines a method called `Describe` that returns a list of metrics that the collector can provide, and a method called `Collect` that returns the current values of those metrics.
+: Let's write a collector for the people-in-space exporter.
+
+.code space_exporter/main.go /type spaceCollector /,/END OMIT/
+
+## Registering the collector
+
+: Once we have a collector, we need to register it with a Prometheus registry.
+: The registry keeps track of all the collectors that have been registered with it, and allows us to expose their metrics on an HTTP endpoint.
+
+.code space_exporter/main.go /func main()/,/^}/
+
+## Demo
+
+: Let's run the exporter and see what we have so far
+
+: Open a terminal and run the exporter:
+: `go run .`
+
+## Back to that collector...
+
+.code space_exporter/v2/main.go /type astroResponse/,$
+
+## Back to that collector...
+
+.code space_exporter/v2/main.go /spaceCollector\) Collect/,/^}/
+
+## Demo
+
+: Now we should have the right number of people in space
+
+: Open a terminal and run the exporter in the `v2` directory:
+: `go run .`
+
+## Labels
+
+- **Labels:** Key-value pairs that allow you to add dimensions to your metrics
+
+: Prometheus metrics can have labels, which add dimensions to your metrics.
+: In our case, we can add a `craft` label to allow us to see a breakdown by spacecraft.
+
+: First we need to change the metric type to a `*GaugeVec`, which is a gauge that can have labels.
+
+.code space_exporter/v3/main.go /func newSpaceCollector/,/^}/
+
+## Labels
+
+: Now we'll create a map of integers for each craft, and increment when we see an astronaut from that craft.
+
+.code space_exporter/v3/main.go /\) observe/,/^}/
+
+## Demo
+
+: Now we should have a breakdown of astronauts by spacecraft
+
+: Open a terminal and run the exporter in the `v3` directory:
+: `go run .`
+
+## Running Prometheus
+
+: Now that we have a running exporter, let's configure Prometheus to scrape it
+: We need to override the scrape path since Prometheus assumes `/metrics` by default
+
+<img src="./prometheus-logo.svg" style="height: 100px"/>
+
+- Configuration:
+
+.code prometheus/prometheus.yml /scrape_configs:/,/END OMIT/
+
+- Running Prometheus:
+    ```console
+    $ prometheus
+    ```
+
+
+## Grafana!
+
+: Now that we have Prometheus running, let's create a dashboard in Grafana
+
+<img src="./grafana2.svg" style="height: 100px"/>
+
+- As simple as `docker run -d -p 3000:3000 grafana/grafana`
+- We'll run a slightly more complex command, with a pre-provisioned datasource and dashboard
+
+.code grafana/grafana.sh /docker run/,$
+
+## Where to go from here
+
+: Now that you know how to write a Prometheus exporter, you can monitor almost anything.
+
+: So, what if you've written an exporter, or you have another system that you want
+: to monitor, but you don't want to run Prometheus and Grafana yourself?
+
+<img src="./cloud-icon.svg" style="height: 100px"/>
+<img src="./alloy_icon.png" style="height: 100px"/>
+
+- Grafana Cloud
+    - observability platform for metrics, logs, traces, profiling, and much more...
+    - _Actually Useful_ Free Tier
+    - Public Dashboards
+    - Private Datasource Connect (PDC) - securely connect your datasources
+- Alloy
+    - Open-source observability pipeline
+    - Send your metrics, logs, traces, and profiles to Grafana Cloud or any other
+      OpenTelemetry-compatible backend
+
+: Grafana Cloud takes care of running Prometheus and Grafana for you, and Alloy
+: helps you get your data into Grafana Cloud or any other OpenTelemetry-compatible backend.
