@@ -194,7 +194,7 @@ people_in_space 7
 
 - Configuration:
 
-.code prometheus/prometheus.yml
+.code prometheus/prometheus.yml /scrape_configs:/,/END OMIT/
 
 - Running Prometheus:
     ```console
