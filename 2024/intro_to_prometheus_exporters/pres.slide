@@ -209,9 +209,9 @@ people_in_space 7
 <img src="./grafana2.svg" style="height: 100px"/>
 
 - As simple as `docker run -d -p 3000:3000 grafana/grafana`
-- We'll run a slightly more complex command, with a pre-provisioned datasource and dashboard
+- But we'll use Docker Compose instead, to change a few settings and provision a datasource and dashboard
 
-.code grafana/grafana.sh /docker run/,$
+.code grafana/docker-compose.yml
 
 ## Where to go from here
 
