@@ -10,7 +10,8 @@ To view the slides:
     ```console
     $ git submodule update --recursive
     ```
-3. run the present tool (with speaker notes if you want), and follow the instructions in the terminal:
+3. run the present tool (with speaker notes if you want):
     ```console
     $ present -notes
     ```
+4. open http://127.0.0.1:3999/pres.slide
